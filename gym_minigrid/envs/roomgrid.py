@@ -44,7 +44,7 @@ class RoomGrid(MiniGridEnv):
         self,
         room_size=6,
         num_cols=4,
-        lockedRooms=False
+        max_steps=200
     ):
         assert room_size > 0
         assert room_size >= 4
@@ -52,10 +52,9 @@ class RoomGrid(MiniGridEnv):
         self.room_size = room_size
         self.num_cols = num_cols
         self.num_rows = num_cols
-        self.lockedRooms = False
 
         grid_size = (room_size - 1) * num_cols + 1
-        super().__init__(gridSize=grid_size, maxSteps=6*grid_size)
+        super().__init__(grid_size=grid_size, max_steps=max_steps)
 
         self.reward_range = (0, 1)
 
@@ -108,31 +107,34 @@ class RoomGrid(MiniGridEnv):
             for i in range(0, self.num_cols):
                 room = self.room_grid[j][i]
 
+                x_l, y_l = room.top
+                x_m, y_m = (room.top[0] + room.size[0] - 1, room.top[1] + room.size[1] - 1)
+
                 # Door positions, order is right, down, left, up
                 if i < self.num_cols - 1:
-                    room.door_pos[0] = (room.top[0] + self.room_size - 1, room.top[1] + self.room_size // 2)
                     room.neighbors[0] = self.room_grid[j][i+1]
+                    room.door_pos[0] = (x_m, self._randInt(y_l, y_m))
                 if j < self.num_rows - 1:
-                    room.door_pos[1] = (room.top[0] + self.room_size // 2, room.top[1] + self.room_size - 1)
                     room.neighbors[1] = self.room_grid[j+1][i]
+                    room.door_pos[1] = (self._randInt(x_l, x_m), y_m)
                 if i > 0:
-                    room.door_pos[2] = (room.top[0], room.top[1] + self.room_size // 2)
                     room.neighbors[2] = self.room_grid[j][i-1]
+                    room.door_pos[2] = room.neighbors[2].door_pos[0]
                 if j > 0:
-                    room.door_pos[3] = (room.top[0] + self.room_size // 2, room.top[1])
                     room.neighbors[3] = self.room_grid[j-1][i]
+                    room.door_pos[3] = room.neighbors[3].door_pos[1]
 
         # The agent starts in the middle, facing right
-        self.startPos = (
+        self.start_pos = (
             (self.num_cols // 2) * (self.room_size-1) + (self.room_size // 2),
             (self.num_rows // 2) * (self.room_size-1) + (self.room_size // 2)
         )
-        self.startDir = 0
+        self.start_dir = 0
 
         # By default, this environment has no mission
         self.mission = ''
 
-    def add_object(self, i, j, kind, color):
+    def add_object(self, i, j, kind, color, reject_fn=None):
         """
         Add a new object to room (i, j)
         """
@@ -148,7 +150,7 @@ class RoomGrid(MiniGridEnv):
 
         room = self.get_room(i, j)
 
-        self.placeObj(obj, room.top, room.size)
+        self.placeObj(obj, room.top, room.size, reject_fn)
 
         room.objs.append(obj)
 
@@ -180,7 +182,7 @@ class RoomGrid(MiniGridEnv):
         starting position
         """
 
-        start_room = self.room_from_pos(*self.startPos)
+        start_room = self.room_from_pos(*self.start_pos)
 
         def find_reach():
             reach = set()
