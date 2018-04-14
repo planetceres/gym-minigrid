@@ -9,7 +9,7 @@ try:
 except:
     pass
 
-def make_env(env_id, seed, rank, log_dir):
+def make_env(env_id, seed, rank, log_dir, image_rgb):
     def _thunk():
         env = gym.make(env_id)
 
@@ -17,7 +17,10 @@ def make_env(env_id, seed, rank, log_dir):
 
         # Maxime: until RL code supports dict observations, squash observations into a flat vector
         if isinstance(env.observation_space, spaces.Dict):
-            env = FlatObsWrapper(env)
+            if image_rgb:
+                env = FlatObsWrapperRGB(env)
+            else:
+                env = FlatObsWrapper(env)
 
         return env
 
