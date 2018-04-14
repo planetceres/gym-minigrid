@@ -69,11 +69,11 @@ class WorldObj:
         """Can the agent overlap with this?"""
         return False
 
-    def canPickup(self):
+    def can_pickup(self):
         """Can the agent pick this up?"""
         return False
 
-    def canContain(self):
+    def can_contain(self):
         """Can this contain another object?"""
         return False
 
@@ -86,9 +86,11 @@ class WorldObj:
         return False
 
     def render(self, r):
-        assert False
+        """Draw this object with the given renderer"""
+        raise NotImplementedError
 
     def _set_color(self, r):
+        """Set the color of this object as the active drawing color"""
         c = COLORS[self.color]
         r.setLineColor(c[0], c[1], c[2])
         r.setColor(c[0], c[1], c[2])
@@ -189,6 +191,9 @@ class LockedDoor(WorldObj):
         """The agent can only walk over this cell when the door is open"""
         return self.is_open
 
+    def see_behind(self):
+        return self.is_open
+
     def render(self, r):
         c = COLORS[self.color]
         r.setLineColor(c[0], c[1], c[2])
@@ -226,7 +231,7 @@ class Key(WorldObj):
     def __init__(self, color='blue'):
         super(Key, self).__init__('key', color)
 
-    def canPickup(self):
+    def can_pickup(self):
         return True
 
     def render(self, r):
@@ -263,7 +268,7 @@ class Ball(WorldObj):
     def __init__(self, color='blue'):
         super(Ball, self).__init__('ball', color)
 
-    def canPickup(self):
+    def can_pickup(self):
         return True
 
     def render(self, r):
@@ -275,7 +280,7 @@ class Box(WorldObj):
         super(Box, self).__init__('box', color)
         self.contains = contains
 
-    def canPickup(self):
+    def can_pickup(self):
         return True
 
     def render(self, r):
@@ -354,25 +359,25 @@ class Grid:
         assert j >= 0 and j < self.height
         return self.grid[j * self.width + i]
 
-    def horzWall(self, x, y, length=None):
+    def horz_wall(self, x, y, length=None):
         if length is None:
             length = self.width - x
         for i in range(0, length):
             self.set(x + i, y, Wall())
 
-    def vertWall(self, x, y, length=None):
+    def vert_wall(self, x, y, length=None):
         if length is None:
             length = self.height - y
         for j in range(0, length):
             self.set(x, y + j, Wall())
 
-    def wallRect(self, x, y, w, h):
-        self.horzWall(x, y, w)
-        self.horzWall(x, y+h-1, w)
-        self.vertWall(x, y, h)
-        self.vertWall(x+w-1, y, h)
+    def wall_rect(self, x, y, w, h):
+        self.horz_wall(x, y, w)
+        self.horz_wall(x, y+h-1, w)
+        self.vert_wall(x, y, h)
+        self.vert_wall(x+w-1, y, h)
 
-    def rotateLeft(self):
+    def rotate_left(self):
         """
         Rotate the grid to the left (counter-clockwise)
         """
@@ -408,15 +413,15 @@ class Grid:
 
         return grid
 
-    def render(self, r, tileSize):
+    def render(self, r, tile_size):
         """
         Render this grid at a given scale
         :param r: target renderer object
-        :param tileSize: tile size in pixels
+        :param tile_size: tile size in pixels
         """
 
-        assert r.width == self.width * tileSize
-        assert r.height == self.height * tileSize
+        assert r.width == self.width * tile_size
+        assert r.height == self.height * tile_size
 
         # Total grid size at native scale
         widthPx = self.width * CELL_PIXELS
@@ -440,7 +445,7 @@ class Grid:
 
         # Internally, we draw at the "large" full-grid resolution, but we
         # use the renderer to scale back to the desired size
-        r.scale(tileSize / CELL_PIXELS, tileSize / CELL_PIXELS)
+        r.scale(tile_size / CELL_PIXELS, tile_size / CELL_PIXELS)
 
         # Draw the background of the in-world cells black
         r.fillRect(
@@ -596,6 +601,45 @@ class Grid:
 
         return mask
 
+    def process_vis_prop(
+        grid,
+        agent_pos
+    ):
+        mask = np.zeros(shape=(grid.width, grid.height), dtype=np.bool)
+
+        mask[agent_pos[0], agent_pos[1]] = True
+
+        for j in reversed(range(1, grid.height)):
+            for i in range(0, grid.width-1):
+                if not mask[i, j]:
+                    continue
+
+                cell = grid.get(i, j)
+                if cell and not cell.see_behind():
+                    continue
+
+                mask[i+1, j] = True
+                mask[i+1, j-1] = True
+                mask[i, j-1] = True
+
+            for i in reversed(range(1, grid.width)):
+                if not mask[i, j]:
+                    continue
+
+                cell = grid.get(i, j)
+                if cell and not cell.see_behind():
+                    continue
+
+                mask[i-1, j-1] = True
+                mask[i-1, j] = True
+                mask[i, j-1] = True
+
+        for j in range(0, grid.height):
+            for i in range(0, grid.width):
+                if not mask[i, j]:
+                    grid.set(i, j, None)
+                    #grid.set(i, j, Wall('red'))
+
 class MiniGridEnv(gym.Env):
     """
     2D grid world game environment
@@ -623,7 +667,13 @@ class MiniGridEnv(gym.Env):
         # Wait/stay put/do nothing
         wait = 6
 
-    def __init__(self, grid_size=16, max_steps=100):
+    def __init__(
+        self,
+        grid_size=16,
+        max_steps=100,
+        see_through_walls=False,
+        seed=1337
+    ):
         # Action enumeration for this environment
         self.actions = MiniGridEnv.Actions
 
@@ -643,7 +693,7 @@ class MiniGridEnv(gym.Env):
         })
 
         # Range of possible rewards
-        self.reward_range = (-1, 1000)
+        self.reward_range = (0, 1)
 
         # Renderer object used to render the whole grid (full-scale)
         self.grid_render = None
@@ -654,22 +704,25 @@ class MiniGridEnv(gym.Env):
         # Environment configuration
         self.grid_size = grid_size
         self.max_steps = max_steps
+        self.see_through_walls = see_through_walls
 
         # Starting position and direction for the agent
         self.start_pos = None
         self.start_dir = None
 
+        # Initialize the RNG
+        self.seed(seed=seed)
+
         # Initialize the state
-        self.seed()
         self.reset()
 
     def reset(self):
         # Generate a new random grid at the start of each episode
         # To keep the same grid for each episode, call env.seed() with
         # the same seed before calling env.reset()
-        self._genGrid(self.grid_size, self.grid_size)
+        self._gen_grid(self.grid_size, self.grid_size)
 
-        # These fields should be defined by _genGrid
+        # These fields should be defined by _gen_grid
         assert self.start_pos != None
         assert self.start_dir != None
 
@@ -693,7 +746,6 @@ class MiniGridEnv(gym.Env):
     def seed(self, seed=1337):
         # Seed the random number generator
         self.np_random, _ = seeding.np_random(seed)
-
         return [seed]
 
     @property
@@ -788,26 +840,40 @@ class MiniGridEnv(gym.Env):
 
         return "\n".join([" ".join(line) for line in new_array])
 
-    def _genGrid(self, width, height):
-        assert False, "_genGrid needs to be implemented by each environment"
+    def _gen_grid(self, width, height):
+        assert False, "_gen_grid needs to be implemented by each environment"
 
-    def _randInt(self, low, high):
+    def _rand_int(self, low, high):
         """
         Generate random integer in [low,high[
         """
 
         return self.np_random.randint(low, high)
 
-    def _randElem(self, iterable):
+    def _rand_bool(self):
+        """
+        Generate random boolean value
+        """
+
+        return (self.np_random.randint(0, 2) == 0)
+
+    def _rand_elem(self, iterable):
         """
         Pick a random element in a list
         """
 
         lst = list(iterable)
-        idx = self._randInt(0, len(lst))
+        idx = self._rand_int(0, len(lst))
         return lst[idx]
 
-    def _randPos(self, xLow, xHigh, yLow, yHigh):
+    def _rand_color(self):
+        """
+        Generate a random color name (string)
+        """
+
+        return self._rand_elem(COLOR_NAMES)
+
+    def _rand_pos(self, xLow, xHigh, yLow, yHigh):
         """
         Generate a random (x,y) position tuple
         """
@@ -817,7 +883,7 @@ class MiniGridEnv(gym.Env):
             self.np_random.randint(yLow, yHigh)
         )
 
-    def placeObj(self, obj, top=None, size=None, reject_fn=None):
+    def place_obj(self, obj, top=None, size=None, reject_fn=None):
         """
         Place an object at an empty position in the grid
 
@@ -834,8 +900,8 @@ class MiniGridEnv(gym.Env):
 
         while True:
             pos = (
-                self._randInt(top[0], top[0] + size[0]),
-                self._randInt(top[1], top[1] + size[1])
+                self._rand_int(top[0], top[0] + size[0]),
+                self._rand_int(top[1], top[1] + size[1])
             )
 
             # Don't place the object on top of another object
@@ -856,16 +922,16 @@ class MiniGridEnv(gym.Env):
 
         return pos
 
-    def placeAgent(self, top=None, size=None, randDir=True):
+    def place_agent(self, top=None, size=None, rand_dir=True):
         """
         Set the agent's starting point at an empty position in the grid
         """
 
-        pos = self.placeObj(None, top, size)
+        pos = self.place_obj(None, top, size)
         self.start_pos = pos
 
-        if randDir:
-            self.start_dir = self._randInt(0, 4)
+        if rand_dir:
+            self.start_dir = self._rand_int(0, 4)
 
         return pos
 
@@ -980,10 +1046,10 @@ class MiniGridEnv(gym.Env):
 
         # Get the position in front of the agent
         u, v = self.get_dir_vec()
-        fwdPos = (self.agent_pos[0] + u, self.agent_pos[1] + v)
+        fwd_pos = (self.agent_pos[0] + u, self.agent_pos[1] + v)
 
         # Get the contents of the cell in front of the agent
-        fwdCell = self.grid.get(*fwdPos)
+        fwd_cell = self.grid.get(*fwd_pos)
 
         # Rotate left
         if action == self.actions.left:
@@ -997,29 +1063,29 @@ class MiniGridEnv(gym.Env):
 
         # Move forward
         elif action == self.actions.forward:
-            if fwdCell == None or fwdCell.can_overlap():
-                self.agent_pos = fwdPos
-            if fwdCell != None and fwdCell.type == 'goal':
+            if fwd_cell == None or fwd_cell.can_overlap():
+                self.agent_pos = fwd_pos
+            if fwd_cell != None and fwd_cell.type == 'goal':
                 done = True
-                reward = 1000 - self.step_count
+                reward = 1
 
         # Pick up an object
         elif action == self.actions.pickup:
-            if fwdCell and fwdCell.canPickup():
+            if fwd_cell and fwd_cell.can_pickup():
                 if self.carrying is None:
-                    self.carrying = fwdCell
-                    self.grid.set(*fwdPos, None)
+                    self.carrying = fwd_cell
+                    self.grid.set(*fwd_pos, None)
 
         # Drop an object
         elif action == self.actions.drop:
-            if not fwdCell and self.carrying:
-                self.grid.set(*fwdPos, self.carrying)
+            if not fwd_cell and self.carrying:
+                self.grid.set(*fwd_pos, self.carrying)
                 self.carrying = None
 
         # Toggle/activate an object
         elif action == self.actions.toggle:
-            if fwdCell:
-                fwdCell.toggle(self, fwdPos)
+            if fwd_cell:
+                fwd_cell.toggle(self, fwd_pos)
 
         # Wait/do nothing
         elif action == self.actions.wait:
@@ -1045,7 +1111,7 @@ class MiniGridEnv(gym.Env):
         grid = self.grid.slice(topX, topY, AGENT_VIEW_SIZE, AGENT_VIEW_SIZE)
 
         for i in range(self.agent_dir + 1):
-            grid = grid.rotateLeft()
+            grid = grid.rotate_left()
 
         # Make it so the agent sees what it's carrying
         # We do this by placing the carried object at the agent's position
@@ -1057,7 +1123,9 @@ class MiniGridEnv(gym.Env):
             grid.set(*agent_pos, None)
 
         # Process occluders and visibility
-        grid.process_vis(agent_pos=(3, 6))
+        # Note that this incurs some performance cost
+        if not self.see_through_walls:
+            grid.process_vis_prop(agent_pos=(3, 6))
 
         # Encode the partially observable view into a numpy array
         image = grid.encode()
