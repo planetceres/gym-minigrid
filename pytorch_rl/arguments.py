@@ -59,6 +59,8 @@ def get_args():
                         help='use a recurrent policy')
     parser.add_argument('--no-vis', action='store_true', default=False,
                         help='disables visdom visualization')
+    parser.add_argument('--rgb', action='store_true', default=False,
+                        help='Use RGB inputs instead of compressed encodings')
     args = parser.parse_args()
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()

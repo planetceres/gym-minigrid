@@ -86,7 +86,12 @@ class FlatObsWrapper(gym.core.ObservationWrapper):
         self.maxStrLen = maxStrLen
         self.numCharCodes = 27
 
-        imgSpace = env.observation_space.spaces['image']
+        # Set input as either RGB array or the default compact encoding
+        if env.image_rgb:
+            imgSpace = env.render('rgb_array')
+        else:
+            imgSpace = env.observation_space.spaces['image']
+
         imgSize = reduce(operator.mul, imgSpace.shape, 1)
 
         self.observation_space = spaces.Box(
@@ -100,7 +105,13 @@ class FlatObsWrapper(gym.core.ObservationWrapper):
         self.cachedArray = None
 
     def observation(self, obs):
-        image = obs['image']
+
+        # Set input as either RGB array or the default compact encoding
+        if self.env.image_rgb:
+            image = self.env.render('rgb_array')
+        else:
+            image = obs['image']
+
         mission = obs['mission']
 
         # Cache the last-encoded mission string
