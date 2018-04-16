@@ -6,6 +6,19 @@ import torch.nn.functional as F
 from distributions import Categorical, DiagGaussian
 from utils import orthogonal
 
+def hidden_units(scale):
+    '''
+    Hidden unit sizes scaled by 2^n
+    Scale   Units
+        5       32
+        6       64
+        7       128 *default
+        8       256
+        9       512
+        10      1024
+    '''
+    return 2**scale
+
 class FFPolicy(nn.Module):
     def __init__(self):
         super().__init__()
@@ -39,19 +52,19 @@ class Policy(FFPolicy):
         assert action_space.__class__.__name__ == "Discrete"
         num_outputs = action_space.n
 
-        self.fc1 = nn.Linear(num_inputs, 128)
-        self.fc2 = nn.Linear(128, 128)
+        self.fc1 = nn.Linear(num_inputs, hidden_units(9))
+        self.fc2 = nn.Linear(hidden_units(9), hidden_units(8))
 
         # Input size, hidden state size
-        self.gru = nn.GRUCell(128, 128)
+        self.gru = nn.GRUCell(hidden_units(8), hidden_units(7))
 
-        self.a_fc1 = nn.Linear(128, 128)
-        self.a_fc2 = nn.Linear(128, 128)
-        self.dist = Categorical(128, num_outputs)
+        self.a_fc1 = nn.Linear(hidden_units(7), hidden_units(7))
+        self.a_fc2 = nn.Linear(hidden_units(7), hidden_units(7))
+        self.dist = Categorical(hidden_units(7), hidden_units(7))
 
-        self.v_fc1 = nn.Linear(128, 128)
-        self.v_fc2 = nn.Linear(128, 128)
-        self.v_fc3 = nn.Linear(128, 1)
+        self.v_fc1 = nn.Linear(hidden_units(7), hidden_units(7))
+        self.v_fc2 = nn.Linear(hidden_units(7), hidden_units(7))
+        self.v_fc3 = nn.Linear(hidden_units(7), 1)
 
         self.train()
         self.reset_parameters()
@@ -61,7 +74,7 @@ class Policy(FFPolicy):
         """
         Size of the recurrent state of the model (propagated between steps)
         """
-        return 128
+        return HS_SIZE_DEFAULT
 
     def reset_parameters(self):
         self.apply(weights_init_mlp)
