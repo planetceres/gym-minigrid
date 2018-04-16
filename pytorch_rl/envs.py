@@ -3,6 +3,8 @@ import numpy
 import gym
 from gym import spaces
 
+from processor import DependencyParser
+
 try:
     import gym_minigrid
     from gym_minigrid.wrappers import *
@@ -17,10 +19,14 @@ def make_env(env_id, seed, rank, log_dir, image_rgb):
 
         # Maxime: until RL code supports dict observations, squash observations into a flat vector
         if isinstance(env.observation_space, spaces.Dict):
+            env = DependencyParser(env)
             if image_rgb:
                 env = FlatObsWrapperRGB(env)
             else:
-                env = FlatObsWrapper(env)
+                #TODO: create option for language embedding type
+                #env = FlatObsWrapper(env)
+                env = FlatObsWrapperEmbed(env)
+
 
         return env
 

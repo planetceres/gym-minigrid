@@ -193,3 +193,116 @@ class FlatObsWrapperRGB(gym.core.ObservationWrapper):
             obs = image.flatten()
 
         return obs
+
+
+class FlatObsWrapper(gym.core.ObservationWrapper):
+    """
+    Encode mission strings using a one-hot scheme,
+    and combine these with observed images into one flat array
+    """
+
+    def __init__(self, env, maxStrLen=64, includeText=True):
+        super().__init__(env)
+
+        self.includeText = includeText
+        self.maxStrLen = maxStrLen
+        self.numCharCodes = 27
+
+        imgSpace = env.observation_space.spaces['image']
+        imgSize = reduce(operator.mul, imgSpace.shape, 1)
+
+        if self.includeText:
+            imgSize = imgSize + self.numCharCodes * self.maxStrLen
+
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(1, imgSize),
+            dtype='uint8'
+        )
+
+        self.cachedStr = None
+        self.cachedArray = None
+
+    def observation(self, obs):
+        image = obs['image']
+        mission = obs['mission']
+        embed = self.env.embed_dep
+
+        if self.includeText:
+            # Cache the last-encoded mission string
+            if mission != self.cachedStr:
+                assert len(mission) <= self.maxStrLen, "mission string too long"
+                mission = mission.lower()
+
+                strArray = np.zeros(shape=(self.maxStrLen, self.numCharCodes), dtype='float32')
+
+                for idx, ch in enumerate(mission):
+                    if ch >= 'a' and ch <= 'z':
+                        chNo = ord(ch) - ord('a')
+                    elif ch == ' ':
+                        chNo = ord('z') - ord('a') + 1
+                    assert chNo < self.numCharCodes, '%s : %d' % (ch, chNo)
+                    strArray[idx, chNo] = 1
+
+                self.cachedStr = mission
+                self.cachedArray = strArray
+
+
+            obs = np.concatenate((image.flatten(), self.cachedArray.flatten()))
+        else:
+            obs = image.flatten()
+
+        return obs
+
+class FlatObsWrapperEmbed(gym.core.ObservationWrapper):
+    """
+    Encode mission strings using SpaCy along with a dependency embedding,
+    and combine these with observed images into one flat array
+    """
+
+    def __init__(self, env, maxStrLen=64, includeText=True):
+        super().__init__(env)
+
+        self.includeText = includeText
+        self.maxStrLen = maxStrLen
+        self.numCharCodes = 27
+
+        imgSpace = env.observation_space.spaces['image']
+        imgSize = reduce(operator.mul, imgSpace.shape, 1)
+
+        if self.includeText:
+            imgSize = imgSize + self.env.embed_dim[0]*2 + self.env.norm_dim*2
+
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(1, imgSize),
+            dtype='uint8'
+        )
+
+        self.cachedStr = None
+        self.cachedArray = None
+
+    def observation(self, obs):
+        image = obs['image']
+        mission = obs['mission']
+
+        if self.includeText:
+            # Cache the last-encoded mission string
+            if mission != self.cachedStr:
+                assert len(mission) <= self.maxStrLen, "mission string too long"
+                mission = mission.lower()
+
+                embeddings = np.concatenate((self.env.embed_phrase, self.env.embed_dep))
+                norms = np.concatenate(([self.env.embed_norm], [self.env.embed_dep_norm]))
+
+                self.cachedStr = mission
+                self.cachedArray = np.concatenate((embeddings, norms))
+
+
+            obs = np.concatenate((image.flatten(), self.cachedArray.flatten()))
+        else:
+            obs = image.flatten()
+
+        return obs
