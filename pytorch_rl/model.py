@@ -39,21 +39,22 @@ class Policy(FFPolicy):
         assert action_space.__class__.__name__ == "Discrete"
         num_outputs = action_space.n
         self.hidden_lg = self.hidden_units(9)
-        self.hidden_md = self.hidden_units(7)
+        self.hidden_md = self.hidden_units(8)
+        self.hidden_sm = self.hidden_units(7)
 
         self.fc1 = nn.Linear(num_inputs, self.hidden_lg)
         self.fc2 = nn.Linear(self.hidden_lg, self.hidden_md)
 
         # Input size, hidden state size
-        self.gru = nn.GRUCell(self.hidden_md, self.hidden_md)
+        self.gru = nn.GRUCell(self.hidden_md, self.hidden_sm)
 
-        self.a_fc1 = nn.Linear(self.hidden_md, self.hidden_md)
-        self.a_fc2 = nn.Linear(self.hidden_md, self.hidden_md)
-        self.dist = Categorical(self.hidden_md, num_outputs)
+        self.a_fc1 = nn.Linear(self.hidden_sm, self.hidden_sm)
+        self.a_fc2 = nn.Linear(self.hidden_sm, self.hidden_sm)
+        self.dist = Categorical(self.hidden_sm, num_outputs)
 
-        self.v_fc1 = nn.Linear(self.hidden_md, self.hidden_md)
-        self.v_fc2 = nn.Linear(self.hidden_md, self.hidden_md)
-        self.v_fc3 = nn.Linear(self.hidden_md, 1)
+        self.v_fc1 = nn.Linear(self.hidden_sm, self.hidden_sm)
+        self.v_fc2 = nn.Linear(self.hidden_sm, self.hidden_sm)
+        self.v_fc3 = nn.Linear(self.hidden_sm, 1)
 
         self.train()
         self.reset_parameters()
@@ -76,7 +77,7 @@ class Policy(FFPolicy):
         """
         Size of the recurrent state of the model (propagated between steps)
         """
-        return self.hidden_md
+        return self.hidden_sm
 
     def reset_parameters(self):
         self.apply(weights_init_mlp)
