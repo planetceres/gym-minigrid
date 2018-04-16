@@ -74,7 +74,7 @@ class Policy(FFPolicy):
         """
         Size of the recurrent state of the model (propagated between steps)
         """
-        return HS_SIZE_DEFAULT
+        return hidden_units(7)
 
     def reset_parameters(self):
         self.apply(weights_init_mlp)
