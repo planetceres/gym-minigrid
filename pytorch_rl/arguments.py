@@ -67,7 +67,7 @@ def get_args():
     args.vis = not args.no_vis
 
     if args.recurrent_policy:
-        if not args.num_processes > args.num_mini_batch:
+        if not args.num_processes >= args.num_mini_batch:
             print('Number of processes must be greater than number of mini batches when using a recurrent policy!')
             print("Exiting...")
             exit()
