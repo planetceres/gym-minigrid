@@ -25,7 +25,8 @@ def make_env(env_id, seed, rank, log_dir, image_rgb):
             else:
                 #TODO: create option for language embedding type
                 #env = FlatObsWrapper(env)
-                env = FlatObsWrapperEmbed(env)
+                #env = FlatObsWrapperEmbed(env)
+                env = FlatObsWrapperCharEmbed(env)
 
 
         return env

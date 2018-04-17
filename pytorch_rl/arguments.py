@@ -66,6 +66,12 @@ def get_args():
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.vis = not args.no_vis
 
+    if args.recurrent_policy:
+        if not args.num_processes > args.num_mini_batch:
+            print('Number of processes must be greater than number of mini batches when using a recurrent policy!')
+            print("Exiting...")
+            exit()
+
     if not args.cuda:
         print('*** WARNING: CUDA NOT ENABLED ***')
 
