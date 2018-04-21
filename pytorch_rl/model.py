@@ -40,27 +40,27 @@ class Policy(FFPolicy):
         num_outputs = action_space.n
 
         self.h = {
-                    'xl': self.hidden_units(10),
-                    'lg': self.hidden_units(9),
-                    'md': self.hidden_units(8),
-                    'sm': self.hidden_units(7),
-                    'xs': self.hidden_units(6)
+                    'XL': self.hidden_units(10),
+                    'L': self.hidden_units(9),
+                    'M': self.hidden_units(8),
+                    'S': self.hidden_units(7),
+                    'XS': self.hidden_units(6)
                     }
 
-        self.fc1 = nn.Linear(num_inputs, self.h['xl'])
-        self.fc2 = nn.Linear(self.h['xl'], self.h['lg'])
-        self.fc3 = nn.Linear(self.h['lg'], self.h['md'])
+        self.fc1 = nn.Linear(num_inputs, self.h['XL'])
+        self.fc2 = nn.Linear(self.h['XL'], self.h['L'])
+        self.fc3 = nn.Linear(self.h['L'], self.h['M'])
 
         # Input size, hidden state size
-        self.gru = nn.GRUCell(self.h['md'], self.h['md'])
+        self.gru = nn.GRUCell(self.h['M'], self.h['M'])
 
-        self.a_fc1 = nn.Linear(self.h['md'], self.h['sm'])
-        self.a_fc2 = nn.Linear(self.h['sm'], self.h['sm'])
-        self.dist = Categorical(self.h['sm'], num_outputs)
+        self.a_fc1 = nn.Linear(self.h['M'], self.h['S'])
+        self.a_fc2 = nn.Linear(self.h['S'], self.h['S'])
+        self.dist = Categorical(self.h['S'], num_outputs)
 
-        self.v_fc1 = nn.Linear(self.h['md'], self.h['sm'])
-        self.v_fc2 = nn.Linear(self.h['sm'], self.h['sm'])
-        self.v_fc3 = nn.Linear(self.h['sm'], 1)
+        self.v_fc1 = nn.Linear(self.h['M'], self.h['S'])
+        self.v_fc2 = nn.Linear(self.h['S'], self.h['S'])
+        self.v_fc3 = nn.Linear(self.h['S'], 1)
 
         self.train()
         self.reset_parameters()
@@ -69,12 +69,12 @@ class Policy(FFPolicy):
         '''
         Hidden unit sizes scaled by 2^n
         Scale   Units       Size
-            5       32          xxs
-            6       64          xs
-            7       128         sm       *default
-            8       256         md
-            9       512         lg
-            10      1024        xl
+            5       32          XXS
+            6       64          XS
+            7       128         S       *default
+            8       256         M
+            9       512         L
+            10      1024        XL
         '''
         return int(2**scale)
 
@@ -83,7 +83,7 @@ class Policy(FFPolicy):
         """
         Size of the recurrent state of the model (propagated between steps)
         """
-        return self.h['md']
+        return self.h['M']
 
     def reset_parameters(self):
         self.apply(weights_init_mlp)
