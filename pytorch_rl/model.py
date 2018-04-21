@@ -38,7 +38,7 @@ class Policy(FFPolicy):
         self.action_space = action_space
         assert action_space.__class__.__name__ == "Discrete"
         num_outputs = action_space.n
-        
+
         self.h = {
                     'xl': self.hidden_units(10),
                     'lg': self.hidden_units(9),
@@ -47,17 +47,18 @@ class Policy(FFPolicy):
                     'xs': self.hidden_units(6)
                     }
 
-        self.fc1 = nn.Linear(num_inputs, self.h['lg'])
-        self.fc2 = nn.Linear(self.h['lg'], self.h['md'])
+        self.fc1 = nn.Linear(num_inputs, self.h['xl'])
+        self.fc2 = nn.Linear(self.h['xl'], self.h['lg'])
+        self.fc3 = nn.Linear(self.h['lg'], self.h['md'])
 
         # Input size, hidden state size
-        self.gru = nn.GRUCell(self.h['md'], self.h['sm'])
+        self.gru = nn.GRUCell(self.h['md'], self.h['md'])
 
-        self.a_fc1 = nn.Linear(self.h['sm'], self.h['sm'])
+        self.a_fc1 = nn.Linear(self.h['md'], self.h['sm'])
         self.a_fc2 = nn.Linear(self.h['sm'], self.h['sm'])
         self.dist = Categorical(self.h['sm'], num_outputs)
 
-        self.v_fc1 = nn.Linear(self.h['sm'], self.h['sm'])
+        self.v_fc1 = nn.Linear(self.h['md'], self.h['sm'])
         self.v_fc2 = nn.Linear(self.h['sm'], self.h['sm'])
         self.v_fc3 = nn.Linear(self.h['sm'], 1)
 
@@ -70,9 +71,9 @@ class Policy(FFPolicy):
         Scale   Units       Size
             5       32          xxs
             6       64          xs
-            7       128         s       *default
-            8       256         m
-            9       512         l
+            7       128         sm       *default
+            8       256         md
+            9       512         lg
             10      1024        xl
         '''
         return int(2**scale)
@@ -82,7 +83,7 @@ class Policy(FFPolicy):
         """
         Size of the recurrent state of the model (propagated between steps)
         """
-        return self.h['sm']
+        return self.h['md']
 
     def reset_parameters(self):
         self.apply(weights_init_mlp)
@@ -96,6 +97,34 @@ class Policy(FFPolicy):
             self.dist.fc_mean.weight.data.mul_(0.01)
 
     def forward(self, inputs, states, masks):
+        batch_numel = reduce(operator.mul, inputs.size()[1:], 1)
+        inputs = inputs.view(-1, batch_numel)
+
+        x = self.fc1(inputs)
+        x = F.relu(x)
+        x = self.fc2(x)
+        x = F.relu(x)
+        x = self.fc3(x)
+        x = F.tanh(x)
+
+        assert inputs.size(0) == states.size(0)
+        states = self.gru(x, states * masks)
+
+        x = self.a_fc1(states)
+        x = F.relu(x)
+        x = self.a_fc2(x)
+        actions = x
+
+        x = self.v_fc1(states)
+        x = F.relu(x)
+        x = self.v_fc2(x)
+        x = F.relu(x)
+        x = self.v_fc3(x)
+        value = x
+
+        return value, actions, states
+
+    def forward2(self, inputs, states, masks):
         batch_numel = reduce(operator.mul, inputs.size()[1:], 1)
         inputs = inputs.view(-1, batch_numel)
 
