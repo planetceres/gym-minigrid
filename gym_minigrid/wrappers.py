@@ -319,6 +319,73 @@ class FlatObsWrapperCharEmbed(gym.core.ObservationWrapper):
 
         return obs
 
+class FlatObsWrapperCESim(gym.core.ObservationWrapper):
+    """
+    Encode mission strings using SpaCy along with a dependency similarity vector,
+    and combine these with observed images into one flat array
+    """
+
+    def __init__(self, env, maxStrLen=64, includeText=True):
+        super().__init__(env)
+
+        self.includeText = includeText
+        self.maxStrLen = maxStrLen
+        self.numCharCodes = 27
+
+        imgSpace = env.observation_space.spaces['image']
+        imgSize = reduce(operator.mul, imgSpace.shape, 1)
+
+        # Use this with hack to apply attention independently to images and language in models.py
+        self.imgSize = imgSize
+
+        if self.includeText:
+            imgSize = imgSize + self.numCharCodes * self.maxStrLen # char encoding size
+            imgSize = imgSize + self.env.embed_dim[0] # word embedding size
+            imgSize = imgSize + self.env.norm_dim*2 # word and dependency similarity vectors
+
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(1, imgSize),
+            dtype='uint8'
+        )
+
+        self.cachedStr = None
+        self.cachedArray = None
+
+    def observation(self, obs):
+        image = obs['image']
+        mission = obs['mission']
+
+        # Cache the last-encoded mission string
+        if mission != self.cachedStr:
+            assert len(mission) <= self.maxStrLen, "mission string too long"
+            mission = mission.lower()
+
+            strArray = np.zeros(shape=(self.maxStrLen, self.numCharCodes), dtype='float32')
+
+            for idx, ch in enumerate(mission):
+                if ch >= 'a' and ch <= 'z':
+                    chNo = ord(ch) - ord('a')
+                elif ch == ' ':
+                    chNo = ord('z') - ord('a') + 1
+                assert chNo < self.numCharCodes, '%s : %d' % (ch, chNo)
+                strArray[idx, chNo] = 1
+
+            # don't use dependency embeddings only similarity scalar
+            #embeddings = np.concatenate((self.env.embed_phrase, self.env.embed_dep))
+            embeddings = self.env.embed_phrase
+            norms = np.concatenate(([self.env.embed_norm], [self.env.embed_dep_norm]))
+            embed_layer = np.concatenate((embeddings, norms))
+
+            self.cachedStr = mission
+            self.cachedArray = np.concatenate((strArray.flatten(), embed_layer))
+
+
+        obs = np.concatenate((image.flatten(), self.cachedArray.flatten()))
+
+        return obs
+
 class FlatObsWrapperEmbed(gym.core.ObservationWrapper):
     """
     Encode mission strings using SpaCy along with a dependency embedding,
@@ -363,6 +430,123 @@ class FlatObsWrapperEmbed(gym.core.ObservationWrapper):
 
                 self.cachedStr = mission
                 self.cachedArray = np.concatenate((embeddings, norms))
+
+
+            obs = np.concatenate((image.flatten(), self.cachedArray.flatten()))
+        else:
+            obs = image.flatten()
+
+        return obs
+
+
+class MissionWrapperTokenized(gym.core.ObservationWrapper):
+    """
+    Encode mission strings as a tokenized vector with only language embedding
+    """
+
+    def __init__(self, env, maxStrLen=64, includeText=True):
+        super().__init__(env)
+
+        self.includeText = includeText
+        self.maxStrLen = maxStrLen
+        self.numCharCodes = 27
+
+        imgSpace = env.observation_space.spaces['image']
+        imgSize = reduce(operator.mul, imgSpace.shape, 1)
+
+        if self.includeText:
+            imgSize = imgSize + self.numCharCodes * self.maxStrLen
+
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(1, imgSize),
+            dtype='uint8'
+        )
+
+        self.cachedStr = None
+        self.cachedArray = None
+        self.env.mission_tokenized = None
+
+    def observation(self, obs):
+        image = obs['image']
+        mission = obs['mission']
+
+        # Cache the last-encoded mission string
+        if mission != self.cachedStr:
+            assert len(mission) <= self.maxStrLen, "mission string too long"
+            mission = mission.lower()
+
+            strArray = np.zeros(shape=(self.maxStrLen, self.numCharCodes), dtype='float32')
+
+            for idx, ch in enumerate(mission):
+                if ch >= 'a' and ch <= 'z':
+                    chNo = ord(ch) - ord('a')
+                elif ch == ' ':
+                    chNo = ord('z') - ord('a') + 1
+                assert chNo < self.numCharCodes, '%s : %d' % (ch, chNo)
+                strArray[idx, chNo] = 1
+
+            self.cachedStr = mission
+            self.cachedArray = strArray
+
+
+            self.env.mission_tokenized = self.cachedArray.flatten()
+
+        return obs
+
+
+class FlatImageWrapper(gym.core.ObservationWrapper):
+    """
+    Encode mission strings as a tokenized vector with only language embedding
+    """
+
+    def __init__(self, env, maxStrLen=64, includeText=False):
+        super().__init__(env)
+
+        self.includeText = includeText
+        self.maxStrLen = maxStrLen
+        self.numCharCodes = 27
+
+        imgSpace = env.observation_space.spaces['image']
+        imgSize = reduce(operator.mul, imgSpace.shape, 1)
+
+        if self.includeText:
+            imgSize = imgSize + self.numCharCodes * self.maxStrLen
+
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(1, imgSize),
+            dtype='uint8'
+        )
+
+        self.cachedStr = None
+        self.cachedArray = None
+
+    def observation(self, obs):
+        image = obs['image']
+        mission = obs['mission']
+        #embed = self.env.embed_dep
+
+        if self.includeText:
+            # Cache the last-encoded mission string
+            if mission != self.cachedStr:
+                assert len(mission) <= self.maxStrLen, "mission string too long"
+                mission = mission.lower()
+
+                strArray = np.zeros(shape=(self.maxStrLen, self.numCharCodes), dtype='float32')
+
+                for idx, ch in enumerate(mission):
+                    if ch >= 'a' and ch <= 'z':
+                        chNo = ord(ch) - ord('a')
+                    elif ch == ' ':
+                        chNo = ord('z') - ord('a') + 1
+                    assert chNo < self.numCharCodes, '%s : %d' % (ch, chNo)
+                    strArray[idx, chNo] = 1
+
+                self.cachedStr = mission
+                self.cachedArray = strArray
 
 
             obs = np.concatenate((image.flatten(), self.cachedArray.flatten()))

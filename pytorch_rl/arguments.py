@@ -61,6 +61,14 @@ def get_args():
                         help='disables visdom visualization')
     parser.add_argument('--rgb', action='store_true', default=False,
                         help='Use RGB inputs instead of compressed encodings')
+    parser.add_argument('--lstm', action='store_true', default=False,
+                        help='Use trainable LSTM for language inputs')
+    parser.add_argument('--use-attn', action='store_true', default=False,
+                        help='Use attention for language inputs')
+    parser.add_argument('--word-embed', action='store_true', default=False,
+                        help='Use pretrained word embeddings')
+    parser.add_argument('--dep-embed', action='store_true', default=False,
+                        help='Use pretrained dependency embeddings')
     args = parser.parse_args()
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -71,6 +79,10 @@ def get_args():
             print('Number of processes must be greater than number of mini batches when using a recurrent policy!')
             print("Exiting...")
             exit()
+
+    if args.lstm and args.word_embed:
+        print('Both trainable embeddings and pretrained embeddings selected. \nAre you sure this is what you want?\n')
+        input("Press Enter to continue or ctrl-c to exit")
 
     if not args.cuda:
         print('*** WARNING: CUDA NOT ENABLED ***')

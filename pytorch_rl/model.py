@@ -6,6 +6,9 @@ import torch.nn.functional as F
 from distributions import Categorical, DiagGaussian
 from utils import orthogonal
 
+from arguments import get_args
+args = get_args()
+
 class FFPolicy(nn.Module):
     def __init__(self):
         super().__init__()
@@ -47,12 +50,29 @@ class Policy(FFPolicy):
                     'XS': self.hidden_units(6)
                     }
 
+        if args.use_attn:
+            # temporarily hard code embedding space dimensions where
+            self.text_vector_len = 302
+            self.text_index = num_inputs - self.text_vector_len
+            num_inputs = self.text_index
+            num_inputs_text = self.text_vector_len
+
+
         self.fc1 = nn.Linear(num_inputs, self.h['XL'])
         self.fc2 = nn.Linear(self.h['XL'], self.h['L'])
         self.fc3 = nn.Linear(self.h['L'], self.h['M'])
 
-        # Input size, hidden state size
-        self.gru = nn.GRUCell(self.h['M'], self.h['M'])
+        if args.use_attn:
+            self.attn = nn.Linear(num_inputs_text, num_inputs_text)
+            self.k_fc1 = nn.Linear(num_inputs_text, self.h['S'])
+            self.k_fc2 = nn.Linear(self.h['S'], self.h['S'])
+            self.k_fc3 = nn.Linear(self.h['S'], self.h['XS'])
+
+            # Combine image and text in recurrent layer
+            self.gru = nn.GRUCell(self.h['M']+self.h['XS'], self.h['M'])
+        else:
+            # Input size, hidden state size
+            self.gru = nn.GRUCell(self.h['M'], self.h['M'])
 
         self.a_fc1 = nn.Linear(self.h['M'], self.h['S'])
         self.a_fc2 = nn.Linear(self.h['S'], self.h['S'])
@@ -100,6 +120,11 @@ class Policy(FFPolicy):
         batch_numel = reduce(operator.mul, inputs.size()[1:], 1)
         inputs = inputs.view(-1, batch_numel)
 
+        if args.use_attn:
+            # slice the inputs according to hardcoded hack
+            inputs_text = inputs.narrow(1, self.text_index, self.text_vector_len)
+            inputs = inputs.narrow(1, 0, self.text_index)
+
         x = self.fc1(inputs)
         x = F.relu(x)
         x = self.fc2(x)
@@ -107,8 +132,21 @@ class Policy(FFPolicy):
         x = self.fc3(x)
         x = F.tanh(x)
 
-        assert inputs.size(0) == states.size(0)
-        states = self.gru(x, states * masks)
+        if args.use_attn:
+            attn_weights = F.softmax(self.attn(inputs_text), dim=1)
+            attn_layer = attn_weights * inputs_text
+            x_text_attn = self.k_fc1(attn_layer)
+            x_text_attn = F.relu(x_text_attn)
+            x_text_attn = self.k_fc2(x_text_attn)
+            x_text_attn = F.relu(x_text_attn)
+            x_text_attn = self.k_fc3(x_text_attn)
+            x_text_attn = F.tanh(x_text_attn)
+
+            states = self.gru(torch.cat((x, x_text_attn), 1), states * masks)
+
+        else:
+            assert inputs.size(0) == states.size(0)
+            states = self.gru(x, states * masks)
 
         x = self.a_fc1(states)
         x = F.relu(x)
@@ -119,32 +157,6 @@ class Policy(FFPolicy):
         x = F.relu(x)
         x = self.v_fc2(x)
         x = F.relu(x)
-        x = self.v_fc3(x)
-        value = x
-
-        return value, actions, states
-
-    def forward2(self, inputs, states, masks):
-        batch_numel = reduce(operator.mul, inputs.size()[1:], 1)
-        inputs = inputs.view(-1, batch_numel)
-
-        x = self.fc1(inputs)
-        x = F.tanh(x)
-        x = self.fc2(x)
-        x = F.tanh(x)
-
-        assert inputs.size(0) == states.size(0)
-        states = self.gru(x, states * masks)
-
-        x = self.a_fc1(states)
-        x = F.tanh(x)
-        x = self.a_fc2(x)
-        actions = x
-
-        x = self.v_fc1(states)
-        x = F.tanh(x)
-        x = self.v_fc2(x)
-        x = F.tanh(x)
         x = self.v_fc3(x)
         value = x
 
